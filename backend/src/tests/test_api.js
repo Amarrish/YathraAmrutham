@@ -1,3 +1,4 @@
+require('dotenv').config();
 const http = require('http');
 const app = require('../app');
 const connectDB = require('../config/db');
@@ -307,7 +308,76 @@ const runTests = async () => {
       'Seating chart reflects rearranged seats: Seat 7 occupied, Seat 5 free'
     );
 
-    // 18. Admin deletes a user
+    // 18. Admin edits user profile
+    const editUserRes = await request(server, {
+      path: `/api/admin/users/${userId}`,
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    }, {
+      name: 'Alice Wonder',
+      phone: '+91 9988776655',
+      address: 'New Wonderland St',
+      role: 'user'
+    });
+    assert(
+      editUserRes.status === 200 && editUserRes.body.data.name === 'Alice Wonder',
+      'Admin can edit user name, phone, address, and role'
+    );
+
+    // 19. Bug Fix Verification: Create tour with availableSeats=25 and totalSeats=30
+    const createTourRes = await request(server, {
+      path: '/api/tours',
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    }, {
+      title: 'Himalayan Ridge Trek',
+      description: 'Scenic high altitude trek through pine valleys and ridges.',
+      destination: 'Kasol, Himachal Pradesh',
+      startLocation: 'Chandigarh Sector 43',
+      startDate: '2026-11-10',
+      endDate: '2026-11-15',
+      pricePerPerson: 6500,
+      totalSeats: 30,
+      availableSeats: 25,
+      vehicleType: 'Volvo Multi-Axle Bus',
+      inclusions: ['Camping', 'Meals'],
+      exclusions: ['Personal expenses']
+    });
+    assert(
+      createTourRes.status === 201 &&
+      createTourRes.body.data.totalSeats === 30 &&
+      createTourRes.body.data.availableSeats === 25,
+      'Bug fixed: Creating tour with 25 available seats and 30 total seats correctly retains availableSeats=25'
+    );
+
+    // 20. Admin manually allocate seat for unallocated offline booking member
+    const memberToAllocate = confirmRes.body.data.members[0];
+    const allocRes = await request(server, {
+      path: `/api/admin/bookings/${offlineBookingId}/allocate-seat`,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    }, {
+      memberId: memberToAllocate._id,
+      seatNumber: 15
+    });
+    assert(
+      allocRes.status === 200 &&
+      allocRes.body.data.allocatedSeats.includes(15),
+      'Admin can manually allocate a specific seat number (Seat 15) to an offline booking member'
+    );
+
+    // 21. Admin send travel info email to confirmed passengers
+    const sendInfoRes = await request(server, {
+      path: `/api/admin/tours/${tourToBook._id}/send-travel-info`,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert(
+      sendInfoRes.status === 200 && sendInfoRes.body.success && sendInfoRes.body.data.emailsSent > 0,
+      `Admin can send travel information notifications to confirmed passengers (${sendInfoRes.body.data?.emailsSent} sent)`
+    );
+
+    // 22. Admin deletes a user
     const deleteUserRes = await request(server, {
       path: `/api/admin/users/${userId}`,
       method: 'DELETE',

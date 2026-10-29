@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import {
   CalendarCheck,
@@ -12,7 +12,8 @@ import {
   CreditCard,
   MapPin,
   ShieldCheck,
-  XCircle
+  XCircle,
+  LayoutGrid
 } from 'lucide-react';
 
 export const ManageBookings = () => {
@@ -267,6 +268,14 @@ export const ManageBookings = () => {
                     <p className="text-slate-500">
                       Dep: <strong>{formatDate(tour?.startDate)}</strong> • Ret: <strong>{formatDate(tour?.endDate)}</strong>
                     </p>
+                    {tour?._id && (
+                      <Link
+                        to={`/admin/seat-chart/${tour._id}`}
+                        className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-[10px] font-bold transition-colors"
+                      >
+                        <LayoutGrid className="w-3 h-3" /> View Seat Chart
+                      </Link>
+                    )}
                   </div>
 
                   {/* Customer & Contact */}
@@ -298,6 +307,11 @@ export const ManageBookings = () => {
                           <span className="font-semibold text-slate-800">
                             #{idx + 1}. {m.name} ({m.age}y, {m.gender})
                           </span>
+                          {m.seatNumber && (
+                            <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">
+                              Seat #{m.seatNumber}
+                            </span>
+                          )}
                           {m.isChild && (
                             <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1 rounded">
                               Child

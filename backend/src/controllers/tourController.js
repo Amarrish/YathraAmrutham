@@ -121,7 +121,7 @@ const createTour = async (req, res, next) => {
       endDate: new Date(endDate),
       pricePerPerson: Number(pricePerPerson),
       totalSeats: Number(totalSeats),
-      availableSeats: Number(totalSeats), // Initially available equals total seats
+      availableSeats: req.body.availableSeats !== undefined ? Number(req.body.availableSeats) : Number(totalSeats),
       vehicleType,
       itinerary: itinerary || [],
       inclusions: inclusions || [],

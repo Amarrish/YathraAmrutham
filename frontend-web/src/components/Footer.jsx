@@ -10,11 +10,8 @@ export const Footer = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-white">
               <Compass className="w-6 h-6 text-sky-400" />
-              <span className="text-xl font-bold">WanderWise Tours</span>
+              <span className="text-xl font-bold">YathraAmrutham Tours</span>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Premium guided group tours, curated itineraries, modern AC vehicles, and seamless travel bookings across India.
-            </p>
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 w-fit">
               <Shield className="w-3.5 h-3.5" />
               <span>Certified Travel Operator</span>

@@ -71,14 +71,11 @@ export const UserDashboard = () => {
       <div className="bg-gradient-to-r from-sky-900 via-slate-900 to-sky-950 rounded-3xl p-6 sm:p-10 text-white shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px] opacity-20" />
         <div className="relative space-y-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-sky-400 bg-sky-500/10 px-3 py-1 rounded-full border border-sky-400/20">
-            Customer Dashboard
-          </span>
           <h1 className="text-2xl sm:text-4xl font-black">
             Welcome back, {user?.name}! 👋
           </h1>
           <p className="text-slate-300 text-xs sm:text-sm max-w-xl">
-            Track your tour bookings, inspect departure points and vehicles, and review your 20% advance pre-registration payments.
+            Track your tour bookings, inspect departure points and vehicles.
           </p>
 
           <div className="pt-4 flex flex-wrap gap-4">

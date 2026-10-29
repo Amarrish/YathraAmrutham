@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AdvanceWarningModal } from '../components/AdvanceWarningModal';
+import { SeatMap } from '../components/SeatMap';
+import { PaymentGateway } from '../components/PaymentGateway';
 import {
   Users,
   CreditCard,
@@ -13,7 +15,8 @@ import {
   Bus,
   Calendar,
   Shield,
-  ArrowLeft
+  ArrowLeft,
+  MapPin
 } from 'lucide-react';
 
 export const BookingPage = () => {
@@ -57,6 +60,15 @@ export const BookingPage = () => {
   // Modal alert
   const [showWarningModal, setShowWarningModal] = useState(false);
 
+  // Seating chart
+  const [seatingData, setSeatingData] = useState(null);
+  const [seatingLoading, setSeatingLoading] = useState(false);
+  const [selectedSeats, setSelectedSeats] = useState([]);
+
+  // Payment gateway
+  const [showPaymentGateway, setShowPaymentGateway] = useState(false);
+  const [onlinePaymentRef, setOnlinePaymentRef] = useState('');
+
   useEffect(() => {
     const fetchTour = async () => {
       try {
@@ -75,7 +87,32 @@ export const BookingPage = () => {
     };
 
     fetchTour();
+    fetchSeating();
   }, [id]);
+
+  const fetchSeating = async () => {
+    if (!id) return;
+    setSeatingLoading(true);
+    try {
+      const res = await api.get(`/tours/${id}/seating`);
+      if (res.data.success) setSeatingData(res.data.data);
+    } catch (err) {
+      console.error('Seating fetch failed:', err);
+    } finally {
+      setSeatingLoading(false);
+    }
+  };
+
+  const handleSeatToggle = (seatNum) => {
+    setSelectedSeats((prev) => {
+      if (prev.includes(seatNum)) return prev.filter((s) => s !== seatNum);
+      if (prev.length >= numberOfSeats) {
+        alert(`You can only select ${numberOfSeats} seat(s). Deselect a seat first.`);
+        return prev;
+      }
+      return [...prev, seatNum];
+    });
+  };
 
   // Adjust members array when seat count changes
   const handleSeatChange = (newCount) => {
@@ -161,7 +198,20 @@ export const BookingPage = () => {
       return;
     }
 
-    // Open mandatory non-refundable advance warning modal
+    // For Online payment, open payment gateway first
+    if (paymentMethod === 'Online') {
+      setShowPaymentGateway(true);
+      return;
+    }
+
+    // For Offline, open the advance warning modal
+    setShowWarningModal(true);
+  };
+
+  // Called when online payment succeeds — store ref, then show advance modal
+  const handlePaymentSuccess = (refId) => {
+    setShowPaymentGateway(false);
+    setOnlinePaymentRef(refId);
     setShowWarningModal(true);
   };
 
@@ -175,15 +225,17 @@ export const BookingPage = () => {
       const payload = {
         tourId: tour._id,
         numberOfSeats,
-        members: members.map((m) => ({
+        members: members.map((m, idx) => ({
           name: m.name,
           age: Number(m.age),
           gender: m.gender,
           isChild: Boolean(m.isChild),
           contact: m.contact || contactDetails.primaryPhone,
           address: m.address || contactDetails.address,
-          optionalImage: m.optionalImage || ''
+          optionalImage: m.optionalImage || '',
+          seatNumber: selectedSeats[idx] || undefined
         })),
+        selectedSeats: selectedSeats.length > 0 ? selectedSeats : undefined,
         contactDetails,
         paymentMethod,
         offlinePaymentDetails:
@@ -193,6 +245,7 @@ export const BookingPage = () => {
                 submittedAt: new Date()
               }
             : undefined,
+        onlinePaymentRef: onlinePaymentRef || undefined,
         nonRefundableAcknowledged: true
       };
 
@@ -291,13 +344,46 @@ export const BookingPage = () => {
             </div>
           </div>
 
-          {/* 2. Passengers / Members Information Repeater */}
+          {/* 2. Seat Selection - Interactive Chart */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-sky-600" />
+              2. Choose Your Seats (Optional)
+            </h3>
+            <p className="text-xs text-slate-500">
+              Select up to <strong>{numberOfSeats}</strong> seat(s) from the chart. If you skip, seats will be auto-assigned.
+            </p>
+            {seatingLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : seatingData ? (
+              <SeatMap
+                totalSeats={seatingData.totalSeats}
+                bookedSeats={seatingData.bookedSeats}
+                selectedSeats={selectedSeats}
+                onSeatClick={handleSeatToggle}
+                maxSelectable={numberOfSeats}
+                vehicleType={tour?.vehicleType}
+              />
+            ) : (
+              <p className="text-center text-xs text-slate-400 py-4">
+                Seating chart unavailable — seats will be auto-assigned.
+              </p>
+            )}
+            {selectedSeats.length > 0 && selectedSeats.length < numberOfSeats && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-semibold">
+                ⚠️ Please select {numberOfSeats - selectedSeats.length} more seat(s) to complete your selection.
+              </div>
+            )}
+          </div>
+
+          {/* 3. Passengers / Members Information Repeater */}
           <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-6">
             <div>
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                 <Users className="w-5 h-5 text-sky-600" />
-                2. Passenger / Member Details ({members.length})
-              </h3>
+                2. Passenger / Member Details ({members.length})              </h3>
               <p className="text-xs text-slate-500 mt-1">
                 Please enter details for all members traveling. Child indicator and ID photos are optional.
               </p>
@@ -432,8 +518,7 @@ export const BookingPage = () => {
           <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-4">
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
               <Shield className="w-5 h-5 text-sky-600" />
-              3. Primary Contact & Billing Address
-            </h3>
+              3. Primary Contact & Billing Address            </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -502,8 +587,7 @@ export const BookingPage = () => {
           <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-4">
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-sky-600" />
-              4. Payment Method for 20% Advance
-            </h3>
+              4. Payment Method for 20% Advance            </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label
@@ -556,6 +640,20 @@ export const BookingPage = () => {
                 </div>
               </label>
             </div>
+
+            {/* Offline Payment Warning */}
+            {paymentMethod === 'Offline' && (
+              <div className="mt-3 p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-1">
+                <p className="font-bold text-amber-900 flex items-center gap-1.5">
+                  ⚠️ Cash at Office — Important Notice
+                </p>
+                <p className="text-amber-800 leading-relaxed">
+                  Your seat will be <strong>held for 24 hours</strong>. Visit our office and pay the 20% advance
+                  (₹{advanceAmount.toLocaleString()}) which is <strong>non-refundable</strong>.
+                  Seat is confirmed <em>only after admin verification</em>.
+                </p>
+              </div>
+            )}
 
             {/* Offline Details Input if Offline is chosen */}
             {paymentMethod === 'Offline' && (
@@ -664,6 +762,15 @@ export const BookingPage = () => {
           </div>
         </div>
       </form>
+
+      {/* Online Payment Gateway Modal */}
+      <PaymentGateway
+        isOpen={showPaymentGateway}
+        onClose={() => setShowPaymentGateway(false)}
+        onSuccess={handlePaymentSuccess}
+        amount={advanceAmount}
+        tourTitle={tour?.title}
+      />
 
       {/* Mandatory Non-Refundable Advance Warning Modal */}
       <AdvanceWarningModal

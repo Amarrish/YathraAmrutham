@@ -461,6 +461,239 @@ const reassignSeat = async (req, res, next) => {
   }
 };
 
+// @desc    Admin edit user details (name, phone, address, role)
+// @route   PUT /api/admin/users/:userId
+// @access  Private/Admin
+const editUser = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { name, phone, address, role } = req.body;
+
+    if (userId.toString() === req.user._id.toString() && role && role !== req.user.role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin cannot change their own role.'
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (name !== undefined) user.name = name.trim();
+    if (phone !== undefined) user.phone = phone.trim();
+    if (address !== undefined) user.address = address.trim();
+    if (role !== undefined && ['user', 'admin'].includes(role)) user.role = role;
+
+    await user.save();
+    const updatedUser = await User.findById(userId).select('-password');
+
+    res.json({
+      success: true,
+      message: `User "${updatedUser.name}" updated successfully.`,
+      data: updatedUser
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin manually allocate a seat for an offline/unallocated booking member
+// @route   POST /api/admin/bookings/:bookingId/allocate-seat
+// @access  Private/Admin
+const allocateSeat = async (req, res, next) => {
+  try {
+    const { bookingId } = req.params;
+    const { memberId, seatNumber } = req.body;
+
+    const seatNum = Number(seatNumber);
+    if (!seatNum || seatNum < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid seat number.' });
+    }
+
+    const booking = await Booking.findById(bookingId).populate('tour');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    const tour = booking.tour;
+    if (seatNum > tour.totalSeats) {
+      return res.status(400).json({
+        success: false,
+        message: `Seat number must be between 1 and ${tour.totalSeats}.`
+      });
+    }
+
+    // Check conflict with another booking
+    const conflictBooking = await Booking.findOne({
+      tour: tour._id,
+      bookingStatus: { $ne: 'Cancelled' },
+      'members.seatNumber': seatNum,
+      _id: { $ne: bookingId }
+    });
+
+    if (conflictBooking) {
+      return res.status(400).json({
+        success: false,
+        message: `Seat #${seatNum} is already occupied. Choose a different seat.`
+      });
+    }
+
+    // Find member by _id or index
+    let memberFound = false;
+    for (let i = 0; i < booking.members.length; i++) {
+      const m = booking.members[i];
+      if (m._id.toString() === memberId || String(i) === String(memberId)) {
+        if (m.seatNumber === seatNum) {
+          return res.status(400).json({ success: false, message: `Member already has seat #${seatNum}.` });
+        }
+        booking.members[i].seatNumber = seatNum;
+        memberFound = true;
+        break;
+      }
+    }
+
+    if (!memberFound) {
+      return res.status(404).json({ success: false, message: 'Member not found in booking.' });
+    }
+
+    booking.allocatedSeats = booking.members.map((m) => m.seatNumber).filter(Boolean);
+    await booking.save();
+
+    res.json({
+      success: true,
+      message: `Seat #${seatNum} allocated successfully.`,
+      data: booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin send travel info email to all confirmed passengers of a tour
+// @route   POST /api/admin/tours/:tourId/send-travel-info
+// @access  Private/Admin
+const sendTravelInfo = async (req, res, next) => {
+  try {
+    const { tourId } = req.params;
+
+    const tour = await Tour.findById(tourId);
+    if (!tour) {
+      return res.status(404).json({ success: false, message: 'Tour not found.' });
+    }
+
+    const bookings = await Booking.find({
+      tour: tourId,
+      bookingStatus: 'Confirmed'
+    }).populate('user', 'name email phone');
+
+    if (bookings.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No confirmed bookings found for this tour.'
+      });
+    }
+
+    const nodemailer = require('nodemailer');
+
+    let transporter;
+    if (process.env.SMTP_HOST) {
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: false,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      });
+    } else {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: { user: testAccount.user, pass: testAccount.pass }
+      });
+    }
+
+    let sentCount = 0;
+    const emailResults = [];
+
+    for (const booking of bookings) {
+      for (const member of booking.members) {
+        const recipientEmail = booking.user?.email || booking.contactDetails?.primaryEmail;
+        const recipientName = member.name || booking.user?.name;
+        if (!recipientEmail) continue;
+
+        const mailOptions = {
+          from: `"WanderWise Travels" <${process.env.SMTP_USER || 'noreply@wanderwise.com'}>`,
+          to: recipientEmail,
+          subject: `🚌 Your Travel Details — ${tour.title}`,
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px;">
+              <div style="background:linear-gradient(135deg,#0ea5e9,#2563eb);padding:24px;border-radius:10px 10px 0 0;text-align:center;">
+                <h1 style="color:white;margin:0;font-size:22px;">✈️ WanderWise Travels</h1>
+                <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Your Journey Awaits!</p>
+              </div>
+              <div style="background:white;padding:28px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;">
+                <h2 style="color:#1e293b;margin-top:0;">Hello, ${recipientName}! 👋</h2>
+                <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:16px 0;">
+                  <h3 style="color:#0369a1;margin:0 0 12px;">📋 Trip Summary</h3>
+                  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <tr><td style="padding:4px 0;color:#64748b;width:140px;">Tour:</td><td style="font-weight:bold;color:#1e293b;">${tour.title}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Destination:</td><td style="font-weight:bold;color:#1e293b;">${tour.destination}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Starting From:</td><td style="font-weight:bold;color:#1e293b;">${tour.startLocation}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Departure:</td><td style="font-weight:bold;color:#1e293b;">${new Date(tour.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Return:</td><td style="font-weight:bold;color:#1e293b;">${new Date(tour.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Vehicle:</td><td style="font-weight:bold;color:#1e293b;">${tour.vehicleType}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Seat Number:</td><td style="font-weight:bold;color:#059669;font-size:15px;">#${member.seatNumber || 'TBD'}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Co-passengers:</td><td style="font-weight:bold;color:#1e293b;">${booking.numberOfSeats} total passengers</td></tr>
+                  </table>
+                </div>
+                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin:16px 0;">
+                  <h3 style="color:#15803d;margin:0 0 12px;">👤 Your Passenger Details</h3>
+                  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <tr><td style="padding:4px 0;color:#64748b;width:140px;">Name:</td><td style="font-weight:bold;color:#1e293b;">${member.name}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Age:</td><td style="font-weight:bold;color:#1e293b;">${member.age} years</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Gender:</td><td style="font-weight:bold;color:#1e293b;">${member.gender}</td></tr>
+                    <tr><td style="padding:4px 0;color:#64748b;">Booking Ref:</td><td style="font-weight:bold;color:#1e293b;">${booking.bookingId || booking._id}</td></tr>
+                  </table>
+                </div>
+                <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px;margin:16px 0;font-size:12px;">
+                  <strong style="color:#92400e;">⚠️ Important:</strong>
+                  <span style="color:#78350f;"> Please arrive at the pickup point at least <strong>30 minutes before departure</strong>. Carry a valid photo ID.</span>
+                </div>
+                <p style="color:#64748b;font-size:12px;">Questions? Contact us: <strong>support@wanderwise.com</strong> | <strong>+91 98765 43210</strong></p>
+                <p style="color:#94a3b8;font-size:11px;">© 2026 WanderWise Travels. Have a wonderful journey! 🌟</p>
+              </div>
+            </div>
+          `
+        };
+
+        try {
+          const info = await transporter.sendMail(mailOptions);
+          sentCount++;
+          emailResults.push({ email: recipientEmail, member: member.name, messageId: info.messageId });
+          const previewUrl = nodemailer.getTestMessageUrl(info);
+          if (previewUrl) console.log(`📧 Travel info sent to ${recipientEmail}. Preview: ${previewUrl}`);
+        } catch (emailErr) {
+          console.error(`Failed to send to ${recipientEmail}:`, emailErr.message);
+        }
+      }
+    }
+
+    // SMS stub
+    console.log(`[SMS STUB] Would send SMS to confirmed passengers for tour: ${tour.title}. Set TWILIO_SID env var to activate.`);
+
+    res.json({
+      success: true,
+      message: `Travel information sent to ${sentCount} passenger(s) successfully.`,
+      data: { tourId, tourTitle: tour.title, emailsSent: sentCount, results: emailResults }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAdminStats,
   getAllBookings,
@@ -469,6 +702,9 @@ module.exports = {
   getAllUsers,
   resetUserPassword,
   deleteUser,
+  editUser,
   getTourSeatingChart,
-  reassignSeat
+  reassignSeat,
+  allocateSeat,
+  sendTravelInfo
 };

@@ -8,8 +8,11 @@ const {
   getAllUsers,
   resetUserPassword,
   deleteUser,
+  editUser,
   getTourSeatingChart,
-  reassignSeat
+  reassignSeat,
+  allocateSeat,
+  sendTravelInfo
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middlewares/authMiddleware');
 
@@ -20,12 +23,19 @@ router.get('/stats', getAdminStats);
 router.get('/bookings', getAllBookings);
 router.put('/bookings/:id/confirm-offline-payment', confirmOfflinePayment);
 router.put('/bookings/:id/payment-status', updatePaymentStatus);
+
+// User management
 router.get('/users', getAllUsers);
 router.put('/users/:userId/reset-password', resetUserPassword);
+router.put('/users/:userId', editUser);
 router.delete('/users/:userId', deleteUser);
 
-// Seating management & rearrange routes
+// Seating management
 router.get('/tours/:tourId/seating-chart', getTourSeatingChart);
 router.put('/tours/:tourId/reassign-seat', reassignSeat);
+router.post('/tours/:tourId/send-travel-info', sendTravelInfo);
+
+// Booking seat allocation (admin assigns seat for offline users)
+router.post('/bookings/:bookingId/allocate-seat', allocateSeat);
 
 module.exports = router;

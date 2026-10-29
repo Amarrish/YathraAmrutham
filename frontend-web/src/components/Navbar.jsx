@@ -42,7 +42,7 @@ export const Navbar = () => {
               className={`transition-colors ${isActive('/') ? 'text-sky-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
                 }`}
             >
-              Explore Tours
+              Explore Yathra
             </Link>
 
             {isAuthenticated && !isAdmin && (

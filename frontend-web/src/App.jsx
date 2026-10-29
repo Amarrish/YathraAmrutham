@@ -17,6 +17,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { ManageTours } from './pages/admin/ManageTours';
 import { ManageBookings } from './pages/admin/ManageBookings';
 import { ManageUsers } from './pages/admin/ManageUsers';
+import { AdminSeatChart } from './pages/admin/AdminSeatChart';
 
 export const App = () => {
   return (
@@ -81,6 +82,14 @@ export const App = () => {
                 element={
                   <ProtectedRoute adminOnly={true}>
                     <ManageUsers />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/seat-chart/:tourId"
+                element={
+                  <ProtectedRoute adminOnly={true}>
+                    <AdminSeatChart />
                   </ProtectedRoute>
                 }
               />
