@@ -6,12 +6,19 @@ const Booking = require('../models/Booking');
 // @access  Public
 const getAllTours = async (req, res, next) => {
   try {
-    const { destination, vehicleType, search, minPrice, maxPrice, status } = req.query;
+    const { destination, vehicleType, search, minPrice, maxPrice, status, includeDeleted } = req.query;
 
     const query = {};
 
-    if (status) {
-      query.status = status;
+    // By default exclude soft-deleted tours
+    if (includeDeleted !== 'true') {
+      query.isDeleted = { $ne: true };
+    }
+
+    if (status !== undefined && status !== '') {
+      if (status !== 'all') {
+        query.status = status;
+      }
     } else {
       query.status = { $in: ['Active', 'Upcoming', 'Full'] };
     }
@@ -88,11 +95,14 @@ const createTour = async (req, res, next) => {
       endDate,
       pricePerPerson,
       totalSeats,
+      availableSeats,
       vehicleType,
       itinerary,
       inclusions,
       exclusions,
-      images
+      images,
+      seatingGrid,
+      status
     } = req.body;
 
     if (
@@ -103,7 +113,7 @@ const createTour = async (req, res, next) => {
       !startDate ||
       !endDate ||
       !pricePerPerson ||
-      !totalSeats ||
+      (!totalSeats && (!seatingGrid || !seatingGrid.cells)) ||
       !vehicleType
     ) {
       return res.status(400).json({
@@ -111,6 +121,18 @@ const createTour = async (req, res, next) => {
         message: 'Please provide all required tour fields'
       });
     }
+
+    // If seatingGrid is provided, calculate totalSeats from active seat cells
+    let finalTotalSeats = Number(totalSeats);
+    if (seatingGrid && Array.isArray(seatingGrid.cells) && seatingGrid.cells.length > 0) {
+      const activeSeatCells = seatingGrid.cells.filter((c) => c.isSeat);
+      if (activeSeatCells.length > 0) {
+        finalTotalSeats = activeSeatCells.length;
+      }
+    }
+
+    const finalAvailableSeats =
+      availableSeats !== undefined ? Number(availableSeats) : finalTotalSeats;
 
     const tour = await Tour.create({
       title,
@@ -120,13 +142,15 @@ const createTour = async (req, res, next) => {
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       pricePerPerson: Number(pricePerPerson),
-      totalSeats: Number(totalSeats),
-      availableSeats: req.body.availableSeats !== undefined ? Number(req.body.availableSeats) : Number(totalSeats),
+      totalSeats: finalTotalSeats,
+      availableSeats: finalAvailableSeats,
       vehicleType,
       itinerary: itinerary || [],
       inclusions: inclusions || [],
       exclusions: exclusions || [],
       images: images || [],
+      seatingGrid: seatingGrid || undefined,
+      status: status || 'Active',
       createdBy: req.user._id
     });
 
@@ -154,13 +178,24 @@ const updateTour = async (req, res, next) => {
       });
     }
 
-    // Process dates and numbers if passed
     const updates = { ...req.body };
     if (updates.startDate) updates.startDate = new Date(updates.startDate);
     if (updates.endDate) updates.endDate = new Date(updates.endDate);
     if (updates.pricePerPerson) updates.pricePerPerson = Number(updates.pricePerPerson);
-    if (updates.totalSeats) updates.totalSeats = Number(updates.totalSeats);
-    if (updates.availableSeats !== undefined) updates.availableSeats = Number(updates.availableSeats);
+
+    // If seatingGrid is updated, sync totalSeats
+    if (updates.seatingGrid && Array.isArray(updates.seatingGrid.cells)) {
+      const activeSeatCells = updates.seatingGrid.cells.filter((c) => c.isSeat);
+      if (activeSeatCells.length > 0) {
+        updates.totalSeats = activeSeatCells.length;
+      }
+    } else if (updates.totalSeats) {
+      updates.totalSeats = Number(updates.totalSeats);
+    }
+
+    if (updates.availableSeats !== undefined) {
+      updates.availableSeats = Number(updates.availableSeats);
+    }
 
     tour = await Tour.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -177,7 +212,38 @@ const updateTour = async (req, res, next) => {
   }
 };
 
-// @desc    Delete tour
+// @desc    Update tour status (e.g. Active, Completed)
+// @route   PUT /api/tours/:id/status
+// @access  Private/Admin
+const updateTourStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!status || !['Active', 'Completed', 'Upcoming', 'Full', 'Cancelled'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid status is required (Active, Completed, Upcoming, Full, Cancelled)'
+      });
+    }
+
+    const tour = await Tour.findById(req.params.id);
+    if (!tour) {
+      return res.status(404).json({ success: false, message: 'Tour not found' });
+    }
+
+    tour.status = status;
+    await tour.save();
+
+    res.json({
+      success: true,
+      message: `Tour marked as ${status} successfully`,
+      data: tour
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete tour (soft-deletes if bookings exist to preserve "Tour Name Unavailable" history)
 // @route   DELETE /api/tours/:id
 // @access  Private/Admin
 const deleteTour = async (req, res, next) => {
@@ -188,6 +254,23 @@ const deleteTour = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'Tour not found'
+      });
+    }
+
+    const existingBookings = await Booking.countDocuments({
+      tour: tour._id,
+      bookingStatus: { $ne: 'Cancelled' }
+    });
+
+    if (existingBookings > 0) {
+      // Soft delete: marks as deleted so customers see "Tour Name Unavailable (Removed by Admin)" safely
+      tour.isDeleted = true;
+      tour.status = 'Cancelled';
+      await tour.save();
+
+      return res.json({
+        success: true,
+        message: `Tour "${tour.title}" has ${existingBookings} active booking(s). It has been safely archived as "Unavailable" to preserve customer tickets.`
       });
     }
 
@@ -244,9 +327,16 @@ const getTourSeating = async (req, res, next) => {
     });
 
     const bookedNumbers = bookedSeats.map((s) => s.seatNumber);
+
+    // Blocked/Disabled by admin
+    const blockedSeats =
+      tour.seatingGrid?.cells
+        ?.filter((c) => c.isBlockedByAdmin && c.seatNumber)
+        .map((c) => c.seatNumber) || [];
+
     const availableSeatNumbers = [];
     for (let i = 1; i <= tour.totalSeats; i++) {
-      if (!bookedNumbers.includes(i)) {
+      if (!bookedNumbers.includes(i) && !blockedSeats.includes(i)) {
         availableSeatNumbers.push(i);
       }
     }
@@ -260,7 +350,89 @@ const getTourSeating = async (req, res, next) => {
         totalSeats: tour.totalSeats,
         availableSeatsCount: availableSeatNumbers.length,
         bookedSeats,
-        availableSeatNumbers
+        bookedNumbers,
+        blockedSeats,
+        availableSeatNumbers,
+        seatingGrid: tour.seatingGrid || null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get all registered users & passengers for a tour
+// @route   GET /api/tours/:id/registered-users
+// @access  Private/Admin
+const getTourRegisteredUsers = async (req, res, next) => {
+  try {
+    const tour = await Tour.findById(req.params.id);
+    if (!tour) {
+      return res.status(404).json({ success: false, message: 'Tour not found' });
+    }
+
+    const bookings = await Booking.find({
+      tour: tour._id,
+      bookingStatus: { $ne: 'Cancelled' }
+    })
+      .populate('user', 'name email phone address')
+      .sort({ createdAt: -1 });
+
+    const passengers = [];
+    let totalRevenue = 0;
+    let totalAdvancePaid = 0;
+
+    bookings.forEach((b) => {
+      totalRevenue += b.pricing?.totalAmount || 0;
+      totalAdvancePaid += b.pricing?.amountPaid || 0;
+
+      b.members.forEach((m, idx) => {
+        passengers.push({
+          bookingId: b._id,
+          bookingRef: b.bookingId,
+          bookerName: b.user?.name || b.contactDetails?.primaryName,
+          bookerEmail: b.user?.email || b.contactDetails?.primaryEmail,
+          bookerPhone: b.user?.phone || b.contactDetails?.primaryPhone,
+          bookerAddress: b.user?.address || b.contactDetails?.address,
+          passengerName: m.name,
+          age: m.age,
+          gender: m.gender,
+          isChild: m.isChild,
+          seatNumber: m.seatNumber || null,
+          paymentStatus: b.paymentStatus,
+          bookingStatus: b.bookingStatus,
+          paymentMethod: b.paymentMethod,
+          amountPaid: b.pricing?.amountPaid || 0,
+          totalAmount: b.pricing?.totalAmount || 0,
+          memberIndex: idx,
+          createdAt: b.createdAt
+        });
+      });
+    });
+
+    res.json({
+      success: true,
+      data: {
+        tour: {
+          id: tour._id,
+          title: tour.title,
+          destination: tour.destination,
+          startLocation: tour.startLocation,
+          startDate: tour.startDate,
+          endDate: tour.endDate,
+          vehicleType: tour.vehicleType,
+          totalSeats: tour.totalSeats,
+          availableSeats: tour.availableSeats,
+          status: tour.status
+        },
+        stats: {
+          totalBookings: bookings.length,
+          totalPassengers: passengers.length,
+          totalRevenue,
+          totalAdvancePaid
+        },
+        passengers,
+        bookings
       }
     });
   } catch (error) {
@@ -273,6 +445,8 @@ module.exports = {
   getTourById,
   createTour,
   updateTour,
+  updateTourStatus,
   deleteTour,
-  getTourSeating
+  getTourSeating,
+  getTourRegisteredUsers
 };

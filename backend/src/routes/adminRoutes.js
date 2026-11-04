@@ -12,7 +12,8 @@ const {
   getTourSeatingChart,
   reassignSeat,
   allocateSeat,
-  sendTravelInfo
+  sendTravelInfo,
+  toggleSeatBlock
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middlewares/authMiddleware');
 
@@ -33,6 +34,7 @@ router.delete('/users/:userId', deleteUser);
 // Seating management
 router.get('/tours/:tourId/seating-chart', getTourSeatingChart);
 router.put('/tours/:tourId/reassign-seat', reassignSeat);
+router.put('/tours/:tourId/toggle-seat-block', toggleSeatBlock);
 router.post('/tours/:tourId/send-travel-info', sendTravelInfo);
 
 // Booking seat allocation (admin assigns seat for offline users)

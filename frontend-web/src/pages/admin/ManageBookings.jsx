@@ -13,7 +13,10 @@ import {
   MapPin,
   ShieldCheck,
   XCircle,
-  LayoutGrid
+  LayoutGrid,
+  Filter,
+  X,
+  Compass
 } from 'lucide-react';
 
 export const ManageBookings = () => {
@@ -21,6 +24,8 @@ export const ManageBookings = () => {
   const initialFilter = searchParams.get('paymentStatus') || 'All';
 
   const [bookings, setBookings] = useState([]);
+  const [activeTours, setActiveTours] = useState([]);
+  const [selectedTourId, setSelectedTourId] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState(initialFilter);
   const [search, setSearch] = useState('');
@@ -29,17 +34,26 @@ export const ManageBookings = () => {
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   useEffect(() => {
-    fetchBookings();
+    fetchData();
   }, []);
 
-  const fetchBookings = async () => {
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const res = await api.get('/admin/bookings');
-      if (res.data.success) {
-        setBookings(res.data.data);
+      const [bookingsRes, toursRes] = await Promise.all([
+        api.get('/admin/bookings'),
+        api.get('/tours?status=all')
+      ]);
+
+      if (bookingsRes.data.success) {
+        setBookings(bookingsRes.data.data);
+      }
+      if (toursRes.data.success) {
+        // Active tours list
+        setActiveTours(toursRes.data.data.filter((t) => t.status !== 'Completed'));
       }
     } catch (err) {
-      console.error('Error fetching admin bookings:', err);
+      console.error('Error fetching admin bookings & tours:', err);
     } finally {
       setLoading(false);
     }
@@ -50,7 +64,7 @@ export const ManageBookings = () => {
       'Enter verification notes (optional):',
       'Verified 20% advance payment in bank / UPI account.'
     );
-    if (notes === null) return; // user cancelled
+    if (notes === null) return;
 
     setActionLoadingId(bookingId);
     setError('');
@@ -62,7 +76,8 @@ export const ManageBookings = () => {
       });
       if (res.data.success) {
         setMessage(res.data.message);
-        fetchBookings();
+        const refetch = await api.get('/admin/bookings');
+        if (refetch.data.success) setBookings(refetch.data.data);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Error confirming offline payment.');
@@ -84,7 +99,8 @@ export const ManageBookings = () => {
       });
       if (res.data.success) {
         setMessage(res.data.message);
-        fetchBookings();
+        const refetch = await api.get('/admin/bookings');
+        if (refetch.data.success) setBookings(refetch.data.data);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Error updating payment status.');
@@ -102,7 +118,31 @@ export const ManageBookings = () => {
     });
   };
 
+  // Compute tour-specific stats
+  const getTourStats = (tourId) => {
+    const tourBookings = bookings.filter((b) => (b.tour?._id || b.tour) === tourId);
+    let totalPassengers = 0;
+    let totalRevenue = 0;
+    let pendingOffline = 0;
+
+    tourBookings.forEach((b) => {
+      totalPassengers += b.numberOfSeats || (b.members?.length || 0);
+      totalRevenue += b.pricing?.amountPaid || 0;
+      if (b.paymentStatus === 'Offline Verification Pending') {
+        pendingOffline++;
+      }
+    });
+
+    return { count: tourBookings.length, totalPassengers, totalRevenue, pendingOffline };
+  };
+
   const filteredBookings = bookings.filter((b) => {
+    // Filter by selected tour card
+    if (selectedTourId) {
+      const bTourId = b.tour?._id || b.tour;
+      if (bTourId !== selectedTourId) return false;
+    }
+
     // Filter by tab
     if (filter === 'Pending Offline' && b.paymentStatus !== 'Offline Verification Pending') return false;
     if (filter === 'Confirmed' && b.bookingStatus !== 'Confirmed') return false;
@@ -111,12 +151,14 @@ export const ManageBookings = () => {
     // Search query
     if (!search.trim()) return true;
     const s = search.toLowerCase();
+    const tourTitle = b.tour?.title?.toLowerCase() || '';
     return (
       b.bookingId.toLowerCase().includes(s) ||
-      b.user?.name?.toLowerCase().includes(s) ||
-      b.user?.email?.toLowerCase().includes(s) ||
-      b.tour?.title?.toLowerCase().includes(s) ||
-      b.offlinePaymentDetails?.referenceNumber?.toLowerCase().includes(s)
+      (b.user?.name && b.user.name.toLowerCase().includes(s)) ||
+      (b.user?.email && b.user.email.toLowerCase().includes(s)) ||
+      tourTitle.includes(s) ||
+      (b.offlinePaymentDetails?.referenceNumber &&
+        b.offlinePaymentDetails.referenceNumber.toLowerCase().includes(s))
     );
   });
 
@@ -129,7 +171,7 @@ export const ManageBookings = () => {
             Booking & Payment Management
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Review customer seat reservations, approve offline 20% advance payments, and verify boarding manifests
+            Review customer seat reservations, select active tours to manage payments and boarding manifests.
           </p>
         </div>
       </div>
@@ -153,8 +195,88 @@ export const ManageBookings = () => {
         </div>
       )}
 
+      {/* ── Active Tours Payment Section ────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <Compass className="w-4 h-4 text-amber-600" />
+            Active Tours & Payment Collections
+          </h2>
+
+          {selectedTourId && (
+            <button
+              onClick={() => setSelectedTourId('')}
+              className="text-xs text-amber-700 hover:text-amber-900 font-bold flex items-center gap-1 hover:underline"
+            >
+              <X className="w-3.5 h-3.5" />
+              Show All Tours Bookings
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {activeTours.map((t) => {
+            const stats = getTourStats(t._id);
+            const isSelected = selectedTourId === t._id;
+
+            return (
+              <div
+                key={t._id}
+                onClick={() => setSelectedTourId(isSelected ? '' : t._id)}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer select-none ${
+                  isSelected
+                    ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400/20 shadow-sm'
+                    : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-2xs'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-bold text-slate-900 text-sm leading-tight line-clamp-1">
+                    {t.title}
+                  </h3>
+                  {stats.pendingOffline > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500 text-white animate-pulse">
+                      {stats.pendingOffline} Pending
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-1 truncate">
+                  <MapPin className="w-3 h-3 text-rose-500 flex-shrink-0" />
+                  {t.destination}
+                </p>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Passengers</span>
+                    <span className="font-black text-slate-800">
+                      {stats.totalPassengers} / {t.totalSeats}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-medium">Collected</span>
+                    <span className="font-black text-emerald-600">
+                      ₹{stats.totalRevenue.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-2 text-right">
+                  <span
+                    className={`text-[10px] font-bold ${
+                      isSelected ? 'text-amber-700 underline' : 'text-slate-400'
+                    }`}
+                  >
+                    {isSelected ? '✓ Viewing Bookings' : 'Click to filter →'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-slate-200">
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
           {['All', 'Pending Offline', 'Confirmed', 'Fully Paid'].map((t) => (
             <button
@@ -162,11 +284,13 @@ export const ManageBookings = () => {
               onClick={() => setFilter(t)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 filter === t
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
                   : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              {t} {t === 'Pending Offline' && `(${bookings.filter((b) => b.paymentStatus === 'Offline Verification Pending').length})`}
+              {t}{' '}
+              {t === 'Pending Offline' &&
+                `(${bookings.filter((b) => b.paymentStatus === 'Offline Verification Pending').length})`}
             </button>
           ))}
         </div>
@@ -183,6 +307,25 @@ export const ManageBookings = () => {
         </div>
       </div>
 
+      {/* Active Filter Pill */}
+      {selectedTourId && (
+        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900 font-semibold">
+          <span>
+            Filtering bookings for tour:{' '}
+            <strong className="font-bold">
+              {activeTours.find((t) => t._id === selectedTourId)?.title || 'Selected Tour'}
+            </strong>{' '}
+            ({filteredBookings.length} booking(s))
+          </span>
+          <button
+            onClick={() => setSelectedTourId('')}
+            className="text-[11px] text-amber-800 hover:text-amber-950 font-bold underline"
+          >
+            Clear Filter
+          </button>
+        </div>
+      )}
+
       {/* Bookings Card List */}
       {loading ? (
         <div className="py-12 flex justify-center">
@@ -193,7 +336,7 @@ export const ManageBookings = () => {
           <CalendarCheck className="w-12 h-12 text-slate-300 mx-auto" />
           <h3 className="font-bold text-slate-800 text-base">No Matching Bookings</h3>
           <p className="text-xs text-slate-500">
-            No reservations found matching current filters.
+            No reservations found matching the current tour / payment filters.
           </p>
         </div>
       ) : (
@@ -202,6 +345,7 @@ export const ManageBookings = () => {
             const isOfflinePending = b.paymentStatus === 'Offline Verification Pending';
             const isConfirmed = b.bookingStatus === 'Confirmed';
             const tour = b.tour;
+            const isTourRemoved = !tour || tour.isDeleted;
 
             return (
               <div
@@ -209,7 +353,7 @@ export const ManageBookings = () => {
                 className={`bg-white rounded-3xl border transition-all ${
                   isOfflinePending
                     ? 'border-amber-300 ring-2 ring-amber-400/20 shadow-md'
-                    : 'border-slate-200 shadow-sm'
+                    : 'border-slate-200 shadow-xs'
                 } overflow-hidden`}
               >
                 {/* Header Strip */}
@@ -253,22 +397,36 @@ export const ManageBookings = () => {
 
                 {/* Main Content Grid */}
                 <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-                  {/* Tour details */}
+                  {/* Tour details (handles Tour Name Unavailable if removed) */}
                   <div className="space-y-1.5 text-xs text-slate-600">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Tour Information
-                    </span>
-                    <p className="font-bold text-slate-900 text-sm">{tour?.title}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Tour Information
+                      </span>
+                      {isTourRemoved && (
+                        <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.2 rounded">
+                          Removed by Admin
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="font-bold text-slate-900 text-sm">
+                      {tour?.title || 'Tour Name Unavailable'}
+                    </p>
+
                     <p className="flex items-center gap-1.5 text-slate-700">
-                      <MapPin className="w-3.5 h-3.5 text-rose-500" /> {tour?.destination}
+                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                      {tour?.destination || 'Destination Unavailable'}
                     </p>
                     <p className="flex items-center gap-1.5 text-slate-700">
-                      <Bus className="w-3.5 h-3.5 text-sky-600" /> {tour?.vehicleType}
+                      <Bus className="w-3.5 h-3.5 text-sky-600" />
+                      {tour?.vehicleType || 'Vehicle Unavailable'}
                     </p>
                     <p className="text-slate-500">
-                      Dep: <strong>{formatDate(tour?.startDate)}</strong> • Ret: <strong>{formatDate(tour?.endDate)}</strong>
+                      Dep: <strong>{formatDate(tour?.startDate) || 'N/A'}</strong> • Ret:{' '}
+                      <strong>{formatDate(tour?.endDate) || 'N/A'}</strong>
                     </p>
-                    {tour?._id && (
+                    {tour?._id && !isTourRemoved && (
                       <Link
                         to={`/admin/seat-chart/${tour._id}`}
                         className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-[10px] font-bold transition-colors"
@@ -283,13 +441,17 @@ export const ManageBookings = () => {
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                       Customer Contact
                     </span>
-                    <p className="font-bold text-slate-900 text-sm">{b.contactDetails?.primaryName}</p>
-                    <p className="text-slate-700">{b.contactDetails?.primaryPhone}</p>
+                    <p className="font-bold text-slate-900 text-sm">
+                      {b.contactDetails?.primaryName || b.user?.name || 'Customer'}
+                    </p>
+                    <p className="text-slate-700">
+                      {b.contactDetails?.primaryPhone || b.user?.phone || 'No phone'}
+                    </p>
                     <p className="text-slate-500 truncate" title={b.contactDetails?.primaryEmail}>
-                      {b.contactDetails?.primaryEmail}
+                      {b.contactDetails?.primaryEmail || b.user?.email}
                     </p>
                     <p className="text-slate-400 text-[11px] truncate" title={b.contactDetails?.address}>
-                      {b.contactDetails?.address}
+                      {b.contactDetails?.address || b.user?.address || 'No address'}
                     </p>
                   </div>
 
@@ -299,7 +461,7 @@ export const ManageBookings = () => {
                       Passengers ({b.numberOfSeats} Seats)
                     </span>
                     <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                      {b.members.map((m, idx) => (
+                      {(b.members || []).map((m, idx) => (
                         <div
                           key={idx}
                           className="p-1.5 bg-slate-50 rounded-lg flex items-center justify-between text-[11px]"
@@ -340,10 +502,10 @@ export const ManageBookings = () => {
                         <span>₹{b.pricing?.amountPaid?.toLocaleString()}</span>
                       </div>
 
-                      {/* Offline Reference */}
                       {b.paymentMethod === 'Offline' && (
                         <div className="mt-2 p-2 bg-amber-50 rounded-lg text-[11px] text-amber-950 border border-amber-200">
-                          <strong>Offline Ref:</strong> {b.offlinePaymentDetails?.referenceNumber || 'N/A'} (
+                          <strong>Offline Ref:</strong>{' '}
+                          {b.offlinePaymentDetails?.referenceNumber || 'N/A'} (
                           {b.offlinePaymentDetails?.paymentMode})
                         </div>
                       )}

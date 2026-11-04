@@ -206,28 +206,42 @@ export const UserDashboard = () => {
                   <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Tour info */}
                     <div className="space-y-3">
-                      <h3 className="font-bold text-slate-900 text-base leading-tight">
-                        {tour?.title || 'Tour Name Unavailable'}
-                      </h3>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-slate-900 text-base leading-tight">
+                          {tour
+                            ? tour.isDeleted
+                              ? `${tour.title} (Tour Removed by Admin)`
+                              : tour.title
+                            : 'Tour Name Unavailable (Removed by Admin)'}
+                        </h3>
+                      </div>
+
+                      {(!tour || tour.isDeleted) && (
+                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 font-semibold flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-rose-600" />
+                          <span>Tour unavailable. Your booking ref remains valid for records.</span>
+                        </div>
+                      )}
+
                       <div className="space-y-1.5 text-xs text-slate-600">
                         <div className="flex items-center gap-2">
                           <MapPin className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
-                          <span>Destination: <strong>{tour?.destination}</strong></span>
+                          <span>Destination: <strong>{tour?.destination || 'N/A'}</strong></span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Bus className="w-3.5 h-3.5 text-sky-500 flex-shrink-0" />
-                          <span>Vehicle: <strong>{tour?.vehicleType}</strong></span>
+                          <span>Vehicle: <strong>{tour?.vehicleType || 'N/A'}</strong></span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                          <span>Departure: <strong>{formatDate(tour?.startDate)}</strong></span>
+                          <span>Departure: <strong>{tour?.startDate ? formatDate(tour.startDate) : 'N/A'}</strong></span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Clock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                          <span>Return Date: <strong>{formatDate(tour?.endDate)}</strong></span>
+                          <span>Return Date: <strong>{tour?.endDate ? formatDate(tour.endDate) : 'N/A'}</strong></span>
                         </div>
                         <div className="text-slate-500 pt-1">
-                          Pickup: <span className="font-medium text-slate-800">{tour?.startLocation}</span>
+                          Pickup: <span className="font-medium text-slate-800">{tour?.startLocation || 'N/A'}</span>
                         </div>
                       </div>
                     </div>
@@ -245,9 +259,16 @@ export const UserDashboard = () => {
                             className="p-2.5 bg-slate-50 rounded-xl text-xs flex items-center justify-between border border-slate-100"
                           >
                             <div>
-                              <span className="font-bold text-slate-800 block">
-                                #{idx + 1}. {m.name}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800">
+                                  #{idx + 1}. {m.name}
+                                </span>
+                                {m.seatNumber && (
+                                  <span className="font-black text-[10px] text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded border border-sky-200">
+                                    Seat #{m.seatNumber}
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[11px] text-slate-500">
                                 Age: {m.age} • Gender: {m.gender}
                               </span>

@@ -70,8 +70,25 @@ const tourSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Active', 'Upcoming', 'Full', 'Cancelled'],
+      enum: ['Active', 'Upcoming', 'Full', 'Completed', 'Cancelled'],
       default: 'Active'
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false
+    },
+    seatingGrid: {
+      rows: { type: Number, default: 10 },
+      columns: { type: Number, default: 5 },
+      cells: [
+        {
+          row: { type: Number, required: true },
+          col: { type: Number, required: true },
+          isSeat: { type: Boolean, default: true },
+          seatNumber: { type: Number },
+          isBlockedByAdmin: { type: Boolean, default: false }
+        }
+      ]
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

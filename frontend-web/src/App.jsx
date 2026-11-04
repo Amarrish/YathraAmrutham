@@ -12,12 +12,14 @@ import { UserDashboard } from './pages/UserDashboard';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
+import { Gallery } from './pages/Gallery';
 
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { ManageTours } from './pages/admin/ManageTours';
 import { ManageBookings } from './pages/admin/ManageBookings';
 import { ManageUsers } from './pages/admin/ManageUsers';
 import { AdminSeatChart } from './pages/admin/AdminSeatChart';
+import { ManageGallery } from './pages/admin/ManageGallery';
 
 export const App = () => {
   return (
@@ -29,6 +31,7 @@ export const App = () => {
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Home />} />
+              <Route path="/gallery" element={<Gallery />} />
               <Route path="/tours/:id" element={<TourDetails />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
@@ -90,6 +93,14 @@ export const App = () => {
                 element={
                   <ProtectedRoute adminOnly={true}>
                     <AdminSeatChart />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/gallery"
+                element={
+                  <ProtectedRoute adminOnly={true}>
+                    <ManageGallery />
                   </ProtectedRoute>
                 }
               />

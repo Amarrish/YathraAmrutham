@@ -343,6 +343,11 @@ const getTourSeatingChart = async (req, res, next) => {
 
     const seatsArray = Object.values(seatMap);
 
+    const blockedSeats =
+      tour.seatingGrid?.cells
+        ?.filter((c) => c.isBlockedByAdmin && c.seatNumber)
+        .map((c) => c.seatNumber) || [];
+
     res.json({
       success: true,
       data: {
@@ -352,7 +357,9 @@ const getTourSeatingChart = async (req, res, next) => {
           destination: tour.destination,
           vehicleType: tour.vehicleType,
           totalSeats: tour.totalSeats,
-          availableSeats: tour.availableSeats
+          availableSeats: tour.availableSeats,
+          seatingGrid: tour.seatingGrid || null,
+          blockedSeats
         },
         seats: seatsArray
       }
@@ -694,6 +701,77 @@ const sendTravelInfo = async (req, res, next) => {
   }
 };
 
+// @desc    Admin toggle seat block/enable for a tour
+// @route   PUT /api/admin/tours/:tourId/toggle-seat-block
+// @access  Private/Admin
+const toggleSeatBlock = async (req, res, next) => {
+  try {
+    const { tourId } = req.params;
+    const { seatNumber } = req.body;
+
+    const seatNum = Number(seatNumber);
+    if (!seatNum || seatNum < 1) {
+      return res.status(400).json({ success: false, message: 'Valid seatNumber is required' });
+    }
+
+    const tour = await Tour.findById(tourId);
+    if (!tour) {
+      return res.status(404).json({ success: false, message: 'Tour not found' });
+    }
+
+    const isOccupied = await Booking.findOne({
+      tour: tour._id,
+      bookingStatus: { $ne: 'Cancelled' },
+      'members.seatNumber': seatNum
+    });
+
+    if (isOccupied) {
+      return res.status(400).json({
+        success: false,
+        message: `Seat #${seatNum} is currently booked by a passenger and cannot be blocked.`
+      });
+    }
+
+    if (!tour.seatingGrid || !Array.isArray(tour.seatingGrid.cells) || tour.seatingGrid.cells.length === 0) {
+      tour.seatingGrid = {
+        rows: Math.ceil(tour.totalSeats / 4),
+        columns: 4,
+        cells: []
+      };
+      for (let i = 1; i <= tour.totalSeats; i++) {
+        tour.seatingGrid.cells.push({
+          row: Math.ceil(i / 4),
+          col: ((i - 1) % 4) + 1,
+          isSeat: true,
+          seatNumber: i,
+          isBlockedByAdmin: false
+        });
+      }
+    }
+
+    const cell = tour.seatingGrid.cells.find((c) => c.seatNumber === seatNum && c.isSeat);
+    if (!cell) {
+      return res.status(404).json({ success: false, message: `Seat #${seatNum} not found in layout.` });
+    }
+
+    cell.isBlockedByAdmin = !cell.isBlockedByAdmin;
+    const nowBlocked = cell.isBlockedByAdmin;
+
+    await tour.save();
+
+    res.json({
+      success: true,
+      message: `Seat #${seatNum} is now ${nowBlocked ? 'Blocked (Disabled)' : 'Enabled (Available)'}.`,
+      data: {
+        seatNumber: seatNum,
+        isBlockedByAdmin: nowBlocked
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAdminStats,
   getAllBookings,
@@ -706,5 +784,6 @@ module.exports = {
   getTourSeatingChart,
   reassignSeat,
   allocateSeat,
-  sendTravelInfo
+  sendTravelInfo,
+  toggleSeatBlock
 };

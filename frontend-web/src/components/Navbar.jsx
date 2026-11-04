@@ -45,6 +45,14 @@ export const Navbar = () => {
               Explore Yathra
             </Link>
 
+            <Link
+              to="/gallery"
+              className={`transition-colors ${isActive('/gallery') ? 'text-sky-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              Gallery & Programs
+            </Link>
+
             {isAuthenticated && !isAdmin && (
               <Link
                 to="/dashboard"
@@ -86,6 +94,13 @@ export const Navbar = () => {
                     }`}
                 >
                   Users & Passwords
+                </Link>
+                <Link
+                  to="/admin/gallery"
+                  className={`transition-colors ${isActive('/admin/gallery') ? 'text-amber-600 font-semibold' : 'text-slate-600 hover:text-amber-600'
+                    }`}
+                >
+                  Gallery Manager
                 </Link>
               </div>
             )}
@@ -156,6 +171,13 @@ export const Navbar = () => {
           >
             Explore Tours
           </Link>
+          <Link
+            to="/gallery"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block py-2 text-sm font-medium text-slate-800 hover:text-sky-600"
+          >
+            Gallery & Upcoming Programs
+          </Link>
           {isAuthenticated && !isAdmin && (
             <Link
               to="/dashboard"
@@ -172,6 +194,7 @@ export const Navbar = () => {
               <Link to="/admin/tours" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-sm text-slate-700">Manage Tours</Link>
               <Link to="/admin/bookings" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-sm text-slate-700">Bookings & Payments</Link>
               <Link to="/admin/users" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-sm text-slate-700">Users & Passwords</Link>
+              <Link to="/admin/gallery" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-sm text-slate-700">Gallery Manager</Link>
             </div>
           )}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between">

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { SeatMap } from '../../components/SeatMap';
+import { RegisteredUsersModal } from '../../components/RegisteredUsersModal';
 import {
   ArrowLeft, Users, LayoutGrid, AlertTriangle, CheckCircle,
-  X, ArrowRightLeft, UserPlus, Send, Loader2, MapPin
+  X, ArrowRightLeft, UserPlus, Send, Loader2, MapPin,
+  Ban, ShieldCheck, FileSpreadsheet
 } from 'lucide-react';
 
 export const AdminSeatChart = () => {
@@ -18,9 +20,13 @@ export const AdminSeatChart = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  // Manifest modal
+  const [showManifestModal, setShowManifestModal] = useState(false);
+
   // Seat panel
   const [selectedSeatNum, setSelectedSeatNum] = useState(null);
   const [selectedSeatInfo, setSelectedSeatInfo] = useState(null);
+  const [blockLoading, setBlockLoading] = useState(false);
 
   // Reassign flow
   const [reassignMode, setReassignMode] = useState(false);
@@ -50,7 +56,13 @@ export const AdminSeatChart = () => {
         setTour(t);
         setSeats(s);
         const map = {};
-        s.forEach((seat) => { map[seat.seatNumber] = { isOccupied: seat.isOccupied, passenger: seat.passenger || null }; });
+        s.forEach((seat) => {
+          map[seat.seatNumber] = {
+            isOccupied: seat.isOccupied,
+            passenger: seat.passenger || null,
+            isBlockedByAdmin: t.blockedSeats?.includes(seat.seatNumber) || false
+          };
+        });
         setSeatDataMap(map);
         await loadUnallocated();
       }
@@ -104,6 +116,25 @@ export const AdminSeatChart = () => {
     setTargetSeat('');
   };
 
+  const handleToggleBlock = async () => {
+    if (!selectedSeatNum) return;
+    setBlockLoading(true);
+    setError('');
+    try {
+      const res = await api.put(`/admin/tours/${tourId}/toggle-seat-block`, {
+        seatNumber: selectedSeatNum
+      });
+      if (res.data.success) {
+        setMessage(res.data.message);
+        await load();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to toggle seat block.');
+    } finally {
+      setBlockLoading(false);
+    }
+  };
+
   const handleReassign = async () => {
     if (!selectedSeatNum || !targetSeat) { setError('Select both from and to seats.'); return; }
     setReassignLoading(true); setError('');
@@ -155,30 +186,54 @@ export const AdminSeatChart = () => {
   );
 
   const occupiedCount = seats.filter((s) => s.isOccupied).length;
+  const isSelectedSeatBlocked = tour?.blockedSeats?.includes(selectedSeatNum);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-4">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 mt-1">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Seat Management</h1>
-          {tour && <p className="text-xs text-slate-500 mt-1">{tour.title} • {tour.destination} • {tour.vehicleType}</p>}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 mt-1">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Seat Alignment & Passengers</h1>
+            {tour && (
+              <p className="text-xs text-slate-500 mt-1">
+                {tour.title} • {tour.destination} • {tour.vehicleType}
+                {tour.seatingGrid ? ` • (${tour.seatingGrid.rows}×${tour.seatingGrid.columns} Custom Grid)` : ''}
+              </p>
+            )}
+          </div>
         </div>
-        <button onClick={handleSendInfo} disabled={sendingInfo} className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition-all disabled:bg-slate-300">
-          {sendingInfo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          Send Travel Info
-        </button>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowManifestModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow transition-all"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            Passenger Manifest & Export
+          </button>
+
+          <button
+            onClick={handleSendInfo}
+            disabled={sendingInfo}
+            className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow transition-all disabled:bg-slate-300"
+          >
+            {sendingInfo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Send Travel Info
+          </button>
+        </div>
       </div>
 
       {tour && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
             { label: 'Total Seats', val: tour.totalSeats, cls: 'text-slate-900' },
             { label: 'Occupied', val: occupiedCount, cls: 'text-rose-600' },
-            { label: 'Available', val: tour.totalSeats - occupiedCount, cls: 'text-emerald-600' }
+            { label: 'Blocked / Disabled', val: tour.blockedSeats?.length || 0, cls: 'text-amber-600' },
+            { label: 'Available', val: Math.max(0, tour.totalSeats - occupiedCount - (tour.blockedSeats?.length || 0)), cls: 'text-emerald-600' }
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-2xl p-4 border border-slate-200 text-center">
               <div className={`text-2xl font-black ${s.cls}`}>{s.val}</div>
@@ -205,13 +260,15 @@ export const AdminSeatChart = () => {
         {/* Seat Map */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 space-y-4">
           <h2 className="font-bold text-slate-900 flex items-center gap-2">
-            <LayoutGrid className="w-5 h-5 text-sky-600" /> Live Seat Map
-            <span className="text-xs font-normal text-slate-400 ml-1">(Click an occupied seat to manage)</span>
+            <LayoutGrid className="w-5 h-5 text-sky-600" /> Live Interactive Seat Chart
+            <span className="text-xs font-normal text-slate-400 ml-1">(Click any seat to inspect, reassign, or enable/disable)</span>
           </h2>
           {tour && (
             <SeatMap
               totalSeats={tour.totalSeats}
               bookedSeats={seats.filter((s) => s.isOccupied).map((s) => s.seatNumber)}
+              blockedSeats={tour.blockedSeats || []}
+              seatingGrid={tour.seatingGrid || null}
               selectedSeats={selectedSeatNum ? [selectedSeatNum] : []}
               vehicleType={tour.vehicleType}
               adminMode={true}
@@ -225,8 +282,8 @@ export const AdminSeatChart = () => {
         {/* Right Panel */}
         <div className="space-y-4">
           {/* Selected seat panel */}
-          {selectedSeatNum !== null && selectedSeatInfo !== null && (
-            <div className="bg-white rounded-3xl border border-sky-200 p-5 space-y-4">
+          {selectedSeatNum !== null && (
+            <div className="bg-white rounded-3xl border border-sky-200 p-5 space-y-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
                   <MapPin className="w-4 h-4 text-sky-600" /> Seat #{selectedSeatNum}
@@ -236,7 +293,7 @@ export const AdminSeatChart = () => {
                 </button>
               </div>
 
-              {selectedSeatInfo.isOccupied && selectedSeatInfo.passenger ? (
+              {selectedSeatInfo?.isOccupied && selectedSeatInfo?.passenger ? (
                 <div className="space-y-3">
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
                     <div className="font-bold text-slate-900 text-sm">{selectedSeatInfo.passenger.name}</div>
@@ -271,7 +328,41 @@ export const AdminSeatChart = () => {
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-slate-500 text-center py-2">This seat is available. Click an occupied seat to manage it.</p>
+                <div className="space-y-3">
+                  <div className={`p-3 rounded-xl border text-xs ${isSelectedSeatBlocked ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                    <div className="font-bold flex items-center gap-1.5">
+                      {isSelectedSeatBlocked ? <Ban className="w-4 h-4 text-rose-600" /> : <ShieldCheck className="w-4 h-4 text-emerald-600" />}
+                      Status: {isSelectedSeatBlocked ? 'Blocked (Disabled for Users)' : 'Available for Booking'}
+                    </div>
+                    <p className="text-[11px] mt-1 text-slate-600">
+                      {isSelectedSeatBlocked
+                        ? 'This seat is currently disabled so visitors cannot choose it. You can enable it anytime.'
+                        : 'This seat is open for visitors to select. You can block or reserve it.'}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleToggleBlock}
+                    disabled={blockLoading}
+                    className={`w-full py-2.5 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors ${
+                      isSelectedSeatBlocked
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-rose-600 hover:bg-rose-700 text-white'
+                    }`}
+                  >
+                    {blockLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : isSelectedSeatBlocked ? (
+                      <>
+                        <ShieldCheck className="w-4 h-4" /> Enable Seat #{selectedSeatNum}
+                      </>
+                    ) : (
+                      <>
+                        <Ban className="w-4 h-4" /> Block / Disable Seat #{selectedSeatNum}
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -376,6 +467,15 @@ export const AdminSeatChart = () => {
           </div>
         </div>
       </div>
+
+      {/* Manifest Modal */}
+      {showManifestModal && (
+        <RegisteredUsersModal
+          tourId={tourId}
+          isOpen={showManifestModal}
+          onClose={() => setShowManifestModal(false)}
+        />
+      )}
     </div>
   );
 };

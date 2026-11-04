@@ -68,12 +68,18 @@ export const AdminDashboard = () => {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link
             to="/admin/tours"
             className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all"
           >
             + Create Tour
+          </Link>
+          <Link
+            to="/admin/gallery"
+            className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+          >
+            Gallery & Programs
           </Link>
           <Link
             to="/admin/bookings"

@@ -361,6 +361,8 @@ export const BookingPage = () => {
               <SeatMap
                 totalSeats={seatingData.totalSeats}
                 bookedSeats={seatingData.bookedSeats}
+                blockedSeats={seatingData.blockedSeats || []}
+                seatingGrid={seatingData.seatingGrid || tour?.seatingGrid || null}
                 selectedSeats={selectedSeats}
                 onSeatClick={handleSeatToggle}
                 maxSelectable={numberOfSeats}
@@ -383,7 +385,8 @@ export const BookingPage = () => {
             <div>
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                 <Users className="w-5 h-5 text-sky-600" />
-                2. Passenger / Member Details ({members.length})              </h3>
+                3. Passenger / Member Details ({members.length})
+              </h3>
               <p className="text-xs text-slate-500 mt-1">
                 Please enter details for all members traveling. Child indicator and ID photos are optional.
               </p>

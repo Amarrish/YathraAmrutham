@@ -385,6 +385,219 @@ const runTests = async () => {
     });
     assert(deleteUserRes.status === 200 && deleteUserRes.body.success, 'Admin can remove a user and their bookings');
 
+    // 23. Active & Completed Tour Status Toggle
+    const statusCompletedRes = await request(
+      server,
+      {
+        path: `/api/tours/${tourToBook._id}/status`,
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      { status: 'Completed' }
+    );
+    assert(
+      statusCompletedRes.status === 200 && statusCompletedRes.body.data.status === 'Completed',
+      'Admin can mark tour as "Completed"'
+    );
+
+    const statusActiveRes = await request(
+      server,
+      {
+        path: `/api/tours/${tourToBook._id}/status`,
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      { status: 'Active' }
+    );
+    assert(
+      statusActiveRes.status === 200 && statusActiveRes.body.data.status === 'Active',
+      'Admin can reopen completed tour as "Active"'
+    );
+
+    // 24. Registered Users Manifest & Statistics Endpoint
+    const regUsersRes = await request(server, {
+      path: `/api/tours/${tourToBook._id}/registered-users`,
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert(
+      regUsersRes.status === 200 &&
+      regUsersRes.body.data?.passengers?.length > 0 &&
+      regUsersRes.body.data?.stats?.totalRevenue > 0,
+      `Registered users manifest returns ${regUsersRes.body.data?.passengers?.length} passengers and financial summary`
+    );
+
+    // 25. Custom Row x Column Seating Grid Designer (e.g., 10 rows x 7 cols with back row full)
+    const customGridCells = [];
+    let seatCounter = 1;
+    for (let r = 1; r <= 10; r++) {
+      for (let c = 1; c <= 7; c++) {
+        // Rows 1-9: columns 3,4,5 are aisle (disabled)
+        if (r < 10 && (c === 3 || c === 4 || c === 5)) {
+          customGridCells.push({ row: r, col: c, isSeat: false });
+        } else {
+          // Row 10 is full 7-seat back row; others have seats
+          customGridCells.push({
+            row: r,
+            col: c,
+            isSeat: true,
+            seatNumber: seatCounter++,
+            isBlockedByAdmin: false
+          });
+        }
+      }
+    }
+    const expectedSeats = customGridCells.filter((c) => c.isSeat).length; // 9*4 + 7 = 43 seats
+
+    const customGridTourRes = await request(
+      server,
+      {
+        path: '/api/tours',
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      {
+        title: 'Custom Grid Volvo Bus Expedition',
+        description: 'Advanced 10x7 alignment bus with full 7-seat back row.',
+        destination: 'Ooty & Coonoor',
+        startLocation: 'Bangalore Majestic',
+        startDate: '2026-11-20',
+        endDate: '2026-11-25',
+        pricePerPerson: 4500,
+        totalSeats: expectedSeats,
+        availableSeats: expectedSeats,
+        vehicleType: 'Volvo Multi-Axle Bus',
+        seatingGrid: {
+          rows: 10,
+          columns: 7,
+          cells: customGridCells
+        }
+      }
+    );
+    assert(
+      customGridTourRes.status === 201 &&
+      customGridTourRes.body.data.seatingGrid?.rows === 10 &&
+      customGridTourRes.body.data.seatingGrid?.columns === 7 &&
+      customGridTourRes.body.data.totalSeats === expectedSeats,
+      `Custom 10x7 row-column seating grid saved with ${expectedSeats} seats and full back row`
+    );
+    const customTourId = customGridTourRes.body.data._id;
+
+    // 26. Admin Seat Enable / Disable (Block/Unblock)
+    const blockSeatRes = await request(
+      server,
+      {
+        path: `/api/admin/tours/${customTourId}/toggle-seat-block`,
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      { seatNumber: 2 }
+    );
+    assert(
+      blockSeatRes.status === 200 && blockSeatRes.body.data.isBlockedByAdmin === true,
+      'Admin can block/disable a seat (Seat #2 disabled)'
+    );
+
+    const publicSeatingRes = await request(server, {
+      path: `/api/tours/${customTourId}/seating`
+    });
+    assert(
+      publicSeatingRes.status === 200 &&
+      publicSeatingRes.body.data.blockedSeats.includes(2) &&
+      !publicSeatingRes.body.data.availableSeatNumbers.includes(2),
+      'Public seating layout reflects admin-blocked seat (Seat #2 disabled for booking)'
+    );
+
+    const unblockSeatRes = await request(
+      server,
+      {
+        path: `/api/admin/tours/${customTourId}/toggle-seat-block`,
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      { seatNumber: 2 }
+    );
+    assert(
+      unblockSeatRes.status === 200 && unblockSeatRes.body.data.isBlockedByAdmin === false,
+      'Admin can unblock/enable a seat (Seat #2 re-enabled)'
+    );
+
+    // 27. Visitor Gallery & Upcoming Tour Program CRUD
+    const createGalleryRes = await request(
+      server,
+      {
+        path: '/api/gallery',
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      {
+        title: 'Munnar Tea Hills Panorama',
+        description: 'Breathtaking sunrise over the Western Ghats tea plantations.',
+        mediaType: 'photo',
+        mediaUrl: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2',
+        category: 'Kerala',
+        isUpcomingTourProgram: true,
+        upcomingProgram: {
+          tourTitle: 'Munnar & Thekkady Holiday Special',
+          destination: 'Kerala',
+          dates: '10 Dec – 15 Dec 2026',
+          itineraryBrief: '3 nights in Munnar tea estates, wildlife boat safari in Periyar.',
+          relatedTourId: customTourId
+        },
+        order: 1
+      }
+    );
+    assert(
+      createGalleryRes.status === 201 &&
+      createGalleryRes.body.data.isUpcomingTourProgram === true &&
+      createGalleryRes.body.data.upcomingProgram.dates === '10 Dec – 15 Dec 2026',
+      'Admin can create gallery photo item with upcoming tour program details'
+    );
+    const galleryItemId = createGalleryRes.body.data._id;
+
+    const getGalleryRes = await request(server, {
+      path: '/api/gallery?upcomingOnly=true'
+    });
+    assert(
+      getGalleryRes.status === 200 && getGalleryRes.body.data.some((i) => i._id === galleryItemId),
+      'Public can filter gallery items by upcoming tour programs'
+    );
+
+    const updateGalleryRes = await request(
+      server,
+      {
+        path: `/api/gallery/${galleryItemId}`,
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      },
+      { title: 'Updated Munnar Misty Peaks' }
+    );
+    assert(
+      updateGalleryRes.status === 200 && updateGalleryRes.body.data.title === 'Updated Munnar Misty Peaks',
+      'Admin can update gallery item metadata'
+    );
+
+    const deleteGalleryRes = await request(server, {
+      path: `/api/gallery/${galleryItemId}`,
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert(
+      deleteGalleryRes.status === 200 && deleteGalleryRes.body.success,
+      'Admin can delete gallery item'
+    );
+
+    // 28. Bug Fix: Tour soft-delete preserves customer booking history ("Tour Name Unavailable")
+    const deleteTourWithBookingsRes = await request(server, {
+      path: `/api/tours/${tourToBook._id}`,
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert(
+      deleteTourWithBookingsRes.status === 200 &&
+      deleteTourWithBookingsRes.body.message.includes('safely archived as "Unavailable"'),
+      'Removing tour with active bookings safely archives it so user bookings display "Tour Name Unavailable" without breaking'
+    );
+
   } catch (err) {
     console.error('Test Suite Exception:', err);
     failCount++;
