@@ -1,133 +1,142 @@
-# 📌 Project Status & Working Progress: Tours and Travel MERN Platform
+# Tours & Travel MERN — Working Notes
 
-**Last Updated:** 2026-10-29  
-**Repository Path:** `d:\tours-and-travel-mern`  
-**Current Branch:** `main`
-
----
-
-## 1. Current Task Progress Overview
-
-All requirements from the latest user feature requests and **Feature Plan v2** have been implemented, tested, and verified:
-
-1. **Available Seats Bug Fix:**
-   - Fixed `createTour` in `tourController.js` where `availableSeats` was previously being overridden with `totalSeats`. Now accurately honors explicit `availableSeats` provided by admin.
-   - Updated tour creation / management UI in `ManageTours.jsx`.
-
-2. **Admin User Management:**
-   - Admin can edit user profile details (`name`, `phone`, `address`, `role`) via `PUT /api/admin/users/:userId`.
-   - Admin can remove/delete users via `DELETE /api/admin/users/:userId`, which automatically cancels associated bookings and restores seats back to tours.
-   - Admin can reset user passwords via `PUT /api/admin/users/:userId/reset-password`.
-   - Admin UI in `ManageUsers.jsx` contains Edit, Password Reset, and Removal modals with confirmation guards.
-
-3. **Interactive Seating Chart for User Booking:**
-   - Created reusable component `SeatMap.jsx` adapting to vehicle types (2+2 for buses/tempo travellers, 2+1 for Innova/SUVs).
-   - Seats color-coded: 🟢 Available, 🔵 Selected, ⬜ Booked/Locked.
-   - Integrated with `BookingPage.jsx` fetching real-time seat availability from `/api/tours/:id/seating`.
-
-4. **Admin Seating Dashboard & Rearrange / Swap:**
-   - Created `AdminSeatChart.jsx` page at `/admin/seat-chart/:tourId`.
-   - Interactive live view of vehicle seating with passenger indicators.
-   - Allows reassigning a passenger to an empty seat or cleanly swapping seats between two occupied passengers (`PUT /api/admin/tours/:tourId/reassign-seat`).
-
-5. **Admin Seat Allocation for Offline Users:**
-   - Admin can assign specific seats to passengers who booked offline or without picking seats (`POST /api/admin/bookings/:bookingId/allocate-seat`).
-   - Integrated into the "Unallocated Passengers" panel in `AdminSeatChart.jsx`.
-
-6. **Travel Information Notifications (Email & SMS):**
-   - Admin can trigger boarding manifest emails to all confirmed passengers (`POST /api/admin/tours/:tourId/send-travel-info`).
-   - Email includes passenger details, assigned seat number, starting location, departure time, and guidelines.
-   - Triggerable via "Send Travel Info" button in `AdminSeatChart.jsx`.
-
-7. **Online Payment Gateway Simulation:**
-   - Created `PaymentGateway.jsx` supporting UPI (QR code + UPI ID), Net Banking (bank selection), and Card payment (16-digit card, expiry, CVV, SSL badge).
-   - Emulates realistic transaction processing and returns reference transaction IDs.
-
-8. **Offline Payment Clarity:**
-   - Clear advisory on `BookingPage.jsx` explaining 24-hour seat hold and required in-office 20% non-refundable advance verification.
-   - Admin can verify and confirm offline payments from `ManageBookings.jsx`.
+**Last Updated:** 2026-11-04  
+**Branch:** `main`  
+**Latest Commit:** `2ebb61a`  
+**Repo:** `d:\tours-and-travel-mern`
 
 ---
 
-## 2. Modified & Created Files
+## ⚠️ Environment Notes
 
-### Backend (`d:\tours-and-travel-mern\backend\`)
-- `src/controllers/tourController.js` — Fixed `availableSeats` assignment logic on tour creation.
-- `src/controllers/adminController.js` — Added `editUser`, `allocateSeat`, and `sendTravelInfo` controllers.
-- `src/routes/adminRoutes.js` — Added routes:
-  - `PUT /users/:userId`
-  - `POST /bookings/:bookingId/allocate-seat`
-  - `POST /tours/:tourId/send-travel-info`
-- `src/tests/test_api.js` — Expanded test suite from 15 to 24 tests covering all new endpoints and edge cases.
-- `src/config/db.js` & `src/server.js` — Ensured proper environment variable handling and database connectivity.
-- `backend/.gitignore` — Configured ignore rules.
-
-### Frontend Web (`d:\tours-and-travel-mern\frontend-web\`)
-- `src/components/SeatMap.jsx` *(NEW)* — Interactive seat grid component with dynamic vehicle layouts and admin mode.
-- `src/components/PaymentGateway.jsx` *(NEW)* — Multi-tab payment simulation modal (UPI, NetBanking, Card).
-- `src/pages/admin/AdminSeatChart.jsx` *(NEW)* — Admin visual seating dashboard, reassign/swap, and offline allocation.
-- `src/pages/BookingPage.jsx` — Integrated `SeatMap`, seat selection limits, `PaymentGateway`, and offline warnings.
-- `src/pages/admin/ManageUsers.jsx` — Added Edit User and Delete User modals & action buttons.
-- `src/pages/admin/ManageBookings.jsx` — Added passenger seat number indicators and "View Seat Chart" navigation button.
-- `src/App.jsx` — Registered route `/admin/seat-chart/:tourId`.
-- `src/components/Navbar.jsx` & `src/components/Footer.jsx` — Minor branding and navigation adjustments.
+- **All `npm`, `git`, and Node.js commands on `d:\` subdirs** require `BypassSandbox: true` (EPERM otherwise).
+- **PowerShell does NOT support `&&`** — run commands separately, not chained.
+- **Tailwind CSS v4**: use `@import "tailwindcss"` — NO `@tailwind base/components/utilities` directives.
 
 ---
 
-## 3. Completed Steps & Verification
+## Default Credentials
 
-- **Automated Tests:** `npm test` runs 24 automated integration tests across auth, booking, tours, seating, user management, and notifications.
-  - **Result:** `24 passed, 0 failed`.
-- **Production Build:** `npm run build` in `frontend-web` succeeded with zero errors (Vite v8.3.5, 2.47s).
-- **Database Seeding:** `npm run seed` in `backend` creates clean test accounts and 4 sample tours.
-
-### Default Test Credentials:
-- **Admin:** `admin@travel.com` / `admin123`
-- **Customer User:** `john@travel.com` / `user123`
+| Role  | Email              | Password  |
+|-------|--------------------|-----------|
+| Admin | admin@travel.com   | admin123  |
+| User  | john@travel.com    | user123   |
 
 ---
 
-## 4. Explicit Instructions for the Next Agent
+## Test Status
 
-When you take over this codebase, follow these instructions:
+| Suite        | Tests | Passed | Failed |
+|--------------|-------|--------|--------|
+| Backend API  | 36    | 36     | 0      |
 
-### A. Environment & Servers
-1. **To start the backend:**
-   ```powershell
-   cd d:\tours-and-travel-mern\backend
-   npm start
-   ```
-   Runs on `http://localhost:5000`. Health check at `http://localhost:5000/api/health`.
+Run: `npm test` inside `backend/` (requires `BypassSandbox: true`)
 
-2. **To start the web frontend:**
-   ```powershell
-   cd d:\tours-and-travel-mern\frontend-web
-   npm run dev
-   ```
-   Runs on `http://localhost:5173`.
+## Build Status
 
-3. **To re-seed fresh test data if database state is altered:**
-   ```powershell
-   cd d:\tours-and-travel-mern\backend
-   npm run seed
-   ```
+- **Frontend:** Vite build ✅ 0 errors (548.52 kB bundle — normal chunk size warning only)  
+- Run: `npm run build` inside `frontend-web/` (requires `BypassSandbox: true`)
 
-4. **To run the full backend automated test suite:**
-   ```powershell
-   cd d:\tours-and-travel-mern\backend
-   npm test
-   ```
+---
 
-### B. Mobile App (React Native Expo)
-- Located at `d:\tours-and-travel-mern\frontend-mobile`.
-- If the user asks for mobile app updates, start Metro with:
-  ```powershell
-  cd d:\tours-and-travel-mern\frontend-mobile
-  npm start
-  ```
-- Any new features added to `frontend-web` (such as `SeatMap` or payment flow) can be ported to the React Native mobile screens if requested by the user.
+## Completed Features (All Sessions)
 
-### C. Recommended Next Enhancements (When User Inquires):
-- **Real SMS Gateway Integration:** Replace the console SMS stub in `sendTravelInfo` (`adminController.js`) with Twilio or Fast2SMS by adding API keys to `.env`.
-- **Real Payment Gateway Integration:** Replace the simulated `PaymentGateway.jsx` with Razorpay or Stripe checkout if production payment handling is desired.
-- **Export Boarding Manifest:** Add PDF / Excel export for passenger manifests from `AdminSeatChart.jsx` or `ManageBookings.jsx`.
+### Session 1 — Core Platform
+- Auth (JWT, bcrypt) — register/login for users & admin
+- Tour CRUD (admin), tour listing (public)
+- Booking flow (user) with seat selection
+- User dashboard with booking history
+- Admin dashboard with stats
+
+### Session 2 — Seating, Payments & User Management
+- Admin: edit/remove users (full access)
+- Bug fix: `availableSeats` correctly stored vs `totalSeats`
+- Vehicle type selector with total seats
+- Seating chart for users (visual seat picker)
+- Admin seating chart: view/reassign booked seats
+- Confirm message after payment + seat selection
+- Travel info SMS/email (stub — Twilio/Nodemailer placeholders)
+- Offline user: admin can allocate seat manually
+- Online payment: UPI / Netbanking redirect simulation (`PaymentGateway.jsx`)
+- Offline payment: cash-at-office, seat held until admin verification
+
+### Session 3 — Tour Lifecycle, Gallery, Seat Design & Exports
+- **Active / Completed Tours** — separate tabs in Manage Tours; "Mark as Completed / Reopen" one-click toggle
+- **Registered Users Manifest** — per-tour passenger list modal; CSV + `.doc` download; revenue stats
+- **Bookings & Payments by Tour** — active tour cards in Bookings section with direct payment actions
+- **Custom Seat Alignment Designer** (`SeatAlignmentDesigner.jsx`) — rows × columns grid (e.g. 10×7); aisle cell disable; last-row full-width; presets (Wide Bus, 2+2 Bus, 2+1 SUV); capacity auto-calc; integrated into Add/Edit Tour modal
+- **Admin Seat Block/Unblock** — toggle any free seat as blocked/unblocked; booked seats disabled for users; admin can reassign seat between users
+- **Visitor Gallery** (`/gallery`) — photos, videos, upcoming programs tabs; lightbox; YouTube/native video player; Book Tour CTA
+- **Admin Gallery Manager** (`/admin/gallery`) — upload/edit/delete media; upcoming tour program sub-fields (title, destination, dates, itinerary, linked tour)
+- **Bug Fix: Removed Tours** — soft-delete (`isDeleted: true`) preserves booking history; user dashboard shows "Tour Name Unavailable (Removed by Admin)" gracefully
+- **Navbar** — added "Gallery & Programs" (public) + "Gallery Manager" (admin) links
+- **Routes** — `/gallery` and `/admin/gallery` wired in `App.jsx`
+- **36 Backend Tests** — covers all new endpoints; 0 failures
+
+---
+
+## New Files Added (Session 3)
+
+### Backend
+| File | Purpose |
+|------|---------|
+| `backend/src/models/Gallery.js` | Gallery schema (photos, videos, upcoming programs) |
+| `backend/src/controllers/galleryController.js` | CRUD for gallery items |
+| `backend/src/routes/galleryRoutes.js` | Public GET + Admin POST/PUT/DELETE |
+
+### Frontend
+| File | Purpose |
+|------|---------|
+| `frontend-web/src/components/SeatAlignmentDesigner.jsx` | Interactive grid designer for custom seat layouts |
+| `frontend-web/src/components/RegisteredUsersModal.jsx` | Passenger manifest modal with CSV+doc export |
+| `frontend-web/src/pages/Gallery.jsx` | Public gallery page |
+| `frontend-web/src/pages/admin/ManageGallery.jsx` | Admin gallery management console |
+
+---
+
+## Modified Files (Session 3)
+
+### Backend
+- `backend/src/models/Tour.js` — added `'Completed'` status, `isDeleted`, `seatingGrid`
+- `backend/src/controllers/tourController.js` — `updateTourStatus`, `getTourRegisteredUsers`, soft-delete, seatingGrid support
+- `backend/src/controllers/adminController.js` — `toggleSeatBlock`, `getTourSeatingChart` returns `blockedSeats` + `seatingGrid`
+- `backend/src/routes/tourRoutes.js` — `PUT /:id/status`, `GET /:id/registered-users`
+- `backend/src/routes/adminRoutes.js` — `PUT /tours/:tourId/toggle-seat-block`
+- `backend/src/app.js` — mounted `/api/gallery`
+- `backend/src/tests/test_api.js` — expanded to 36 tests
+- `backend/src/seed/seedData.js` — 5 tours (Kerala 10×7, Tamil Nadu, Karnataka, Kerala Completed, Goa), 7 gallery items
+
+### Frontend
+- `frontend-web/src/App.jsx` — added `/gallery` and `/admin/gallery` routes
+- `frontend-web/src/components/Navbar.jsx` — gallery links (public + admin)
+- `frontend-web/src/components/SeatMap.jsx` — accepts `seatingGrid`, `blockedSeats`
+- `frontend-web/src/pages/BookingPage.jsx` — passes `blockedSeats` and `seatingGrid` to `SeatMap`
+- `frontend-web/src/pages/UserDashboard.jsx` — "Tour Name Unavailable" banner, seat numbers per member
+- `frontend-web/src/pages/admin/AdminDashboard.jsx` — Gallery & Programs quick-access button
+- `frontend-web/src/pages/admin/AdminSeatChart.jsx` — block/unblock toggle, `RegisteredUsersModal`, stats
+- `frontend-web/src/pages/admin/ManageBookings.jsx` — active tour cards, tour-specific filters, defensive `isDeleted` handling
+- `frontend-web/src/pages/admin/ManageTours.jsx` — Active/Completed tabs, Mark as Completed/Reopen, `SeatAlignmentDesigner`
+
+---
+
+## API Endpoints Added (Session 3)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| PUT | `/api/tours/:id/status` | Admin | Toggle Active ↔ Completed |
+| GET | `/api/tours/:id/registered-users` | Admin | Passenger manifest for a tour |
+| PUT | `/api/admin/tours/:tourId/toggle-seat-block` | Admin | Block/unblock a free seat |
+| GET | `/api/gallery` | Public | List gallery items |
+| POST | `/api/gallery` | Admin | Add gallery item |
+| PUT | `/api/gallery/:id` | Admin | Edit gallery item |
+| DELETE | `/api/gallery/:id` | Admin | Delete gallery item |
+
+---
+
+## Potential Future Work
+
+- Mobile app (`frontend-mobile`) — port Gallery and seating features
+- Real Twilio SMS integration (replace stub in `sendTravelInfo`)
+- Real Razorpay / Stripe integration (replace `PaymentGateway.jsx` simulation)
+- PDF export for passenger manifest (complement to CSV/.doc)
+- Push notifications for booking confirmation
